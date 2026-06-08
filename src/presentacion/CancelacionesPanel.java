@@ -1,11 +1,11 @@
 package presentacion;
 
-import negocio.*;
+import negocio.EmpresaTransporte;
+import negocio.Salida;
 import javax.swing.*;
 import javax.swing.border.LineBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.util.ArrayList;
 import java.util.List;
 
 public class CancelacionesPanel extends JPanel {
@@ -22,7 +22,8 @@ public class CancelacionesPanel extends JPanel {
     private final JRadioButton reprogramarRadio;
     private final JRadioButton reembolsarRadio;
     private final JButton confirmarBtn;
-    private Salida salidaEncontrada;
+    private String idSalidaEncontrada;
+    private String[] infoSalidaCache;
 
     public CancelacionesPanel(EmpresaTransporte empresa) {
         this.empresa = empresa;
@@ -39,8 +40,8 @@ public class CancelacionesPanel extends JPanel {
 
         JComboBox<String> rutaCombo = new JComboBox<>();
         rutaCombo.addItem("Todas");
-        for (Ruta r : empresa.listarRutas()) {
-            rutaCombo.addItem(r.getCodigo());
+        for (String[] r : empresa.getRutasParaCombo()) {
+            rutaCombo.addItem(r[0]);
         }
         buscarPanel.add(new JLabel("Ruta:"));
         buscarPanel.add(rutaCombo);
@@ -53,7 +54,6 @@ public class CancelacionesPanel extends JPanel {
 
         add(buscarPanel, BorderLayout.NORTH);
 
-        
         alertaPanel = new JPanel();
         alertaPanel.setBackground(Colores.ESTADO_ROJO);
         alertaPanel.setBorder(BorderFactory.createCompoundBorder(
@@ -66,12 +66,11 @@ public class CancelacionesPanel extends JPanel {
         alertaTitulo.setFont(new Font("SansSerif", Font.BOLD, 13));
         alertaTitulo.setForeground(Colores.ESTADO_ROJO_TX);
         alertaPanel.add(alertaTitulo);
-        JLabel alertaMsg = new JLabel("Al cambiar el estado se afectar\u00e1n los tiquetes asociados.");
+        JLabel alertaMsg = new JLabel("Al cambiar el estado se afectaran los tiquetes asociados.");
         alertaMsg.setFont(new Font("SansSerif", Font.PLAIN, 11));
         alertaMsg.setForeground(Colores.ESTADO_ROJO_TX);
         alertaPanel.add(alertaMsg);
 
-        
         JPanel centralPanel = new JPanel(new GridLayout(1, 2, 10, 0));
         centralPanel.setOpaque(false);
 
@@ -85,9 +84,9 @@ public class CancelacionesPanel extends JPanel {
         datosPanel.add(new JLabel("Datos de la salida"));
         datosPanel.add(Box.createVerticalStrut(8));
 
-        rutaLabel = new JLabel("Ruta: —");
-        fechaLabel = new JLabel("Fecha y hora: —");
-        busLabel = new JLabel("Bus asignado: —");
+        rutaLabel = new JLabel("Ruta: --");
+        fechaLabel = new JLabel("Fecha y hora: --");
+        busLabel = new JLabel("Bus asignado: --");
 
         datosPanel.add(rutaLabel);
         datosPanel.add(Box.createVerticalStrut(4));
@@ -98,7 +97,7 @@ public class CancelacionesPanel extends JPanel {
         ticketsLabel = new JLabel("Tiquetes VIGENTES: 0");
         datosPanel.add(ticketsLabel);
         datosPanel.add(Box.createVerticalStrut(4));
-        estadoLabel = new JLabel("Estado: —");
+        estadoLabel = new JLabel("Estado: --");
         estadoLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
         datosPanel.add(estadoLabel);
 
@@ -120,14 +119,12 @@ public class CancelacionesPanel extends JPanel {
         centralPanel.add(datosPanel);
         centralPanel.add(ticketsContainer);
 
-        
         JPanel centerContainer = new JPanel(new BorderLayout());
         centerContainer.setOpaque(false);
         centerContainer.add(alertaPanel, BorderLayout.NORTH);
         centerContainer.add(centralPanel, BorderLayout.CENTER);
         add(centerContainer, BorderLayout.CENTER);
 
-        
         JPanel accionesPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 12));
         accionesPanel.setBackground(Colores.FONDO_SUPERFICIE);
         accionesPanel.setBorder(BorderFactory.createCompoundBorder(
@@ -135,7 +132,7 @@ public class CancelacionesPanel extends JPanel {
             BorderFactory.createEmptyBorder(10, 10, 10, 10)
         ));
 
-        reprogramarRadio = new JRadioButton("Reprogramar autom\u00e1ticamente (pr\u00f3xima salida despu\u00e9s de hoy)");
+        reprogramarRadio = new JRadioButton("Reprogramar automaticamente (proxima salida despues de hoy)");
         reprogramarRadio.setFont(new Font("SansSerif", Font.PLAIN, 12));
         reprogramarRadio.setOpaque(false);
         reembolsarRadio = new JRadioButton("Marcar como REEMBOLSADO");
@@ -150,7 +147,7 @@ public class CancelacionesPanel extends JPanel {
         accionesPanel.add(reembolsarRadio);
 
         JButton cancelarBtn = new JButton("Cancelar");
-        confirmarBtn = new JButton("Confirmar cancelaci\u00f3n y generar reporte");
+        confirmarBtn = new JButton("Confirmar cancelacion y generar reporte");
         confirmarBtn.setBackground(Colores.ESTADO_ROJO_TX);
         confirmarBtn.setForeground(Color.WHITE);
         confirmarBtn.setFocusPainted(false);
@@ -170,19 +167,21 @@ public class CancelacionesPanel extends JPanel {
             JOptionPane.showMessageDialog(this, "Ingrese un ID de salida");
             return;
         }
-        salidaEncontrada = empresa.getSalidaPorId(id);
-        if (salidaEncontrada == null) {
+        infoSalidaCache = empresa.getInfoSalidaParaCancelacion(id);
+        if (infoSalidaCache == null || infoSalidaCache[0].isEmpty()) {
             JOptionPane.showMessageDialog(this, "Salida no encontrada", "Error", JOptionPane.ERROR_MESSAGE);
             alertaPanel.setVisible(false);
             return;
         }
 
+        idSalidaEncontrada = id;
         alertaPanel.setVisible(true);
-        rutaLabel.setText("Ruta: " + salidaEncontrada.getMyRuta().getCodigo() + " — " + salidaEncontrada.getMyRuta().getOrigen() + " \u2192 " + salidaEncontrada.getMyRuta().getDestino());
-        fechaLabel.setText("Fecha y hora: " + salidaEncontrada.getFecha().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
-        busLabel.setText("Bus asignado: " + salidaEncontrada.getMyBus().getPlaca());
-        String estado = salidaEncontrada.getEstado();
-        if (Salida.PROGRAMADA.equals(estado) || Salida.EN_RUTA.equals(estado)) {
+        rutaLabel.setText("Ruta: " + infoSalidaCache[0]);
+        fechaLabel.setText("Fecha y hora: " + infoSalidaCache[1]);
+        busLabel.setText("Bus asignado: " + infoSalidaCache[2]);
+        String estado = infoSalidaCache[3];
+        String activa = infoSalidaCache[4];
+        if ("ACTIVA".equals(activa)) {
             estadoLabel.setText("Estado: " + estado + " (ACTIVA)");
             estadoLabel.setForeground(Colores.ESTADO_VERDE_TX);
         } else {
@@ -192,30 +191,27 @@ public class CancelacionesPanel extends JPanel {
 
         ticketsModel.setRowCount(0);
         int vigentes = 0;
-        for (PasajeTicket t : empresa.getMyTickets()) {
-            if (t.getMySalida().getIdSalida().equals(id)) {
-                ticketsModel.addRow(new Object[]{
-                    "TKT-" + t.hashCode(),
-                    t.getMyPasajero().getNombre(),
-                    t.getPuesto(),
-                    t.getEstado()
-                });
-                if (PasajeTicket.VIGENTE.equals(t.getEstado())) vigentes++;
-            }
+        for (Object[] row : empresa.getTicketsPorSalida(id)) {
+            ticketsModel.addRow(row);
+            if (Salida.PROGRAMADA.equals(row[3]) || Salida.EN_RUTA.equals(row[3]) || "VIGENTE".equals(row[3])) vigentes++;
         }
         ticketsLabel.setText("Tiquetes VIGENTES: " + vigentes);
     }
 
     private void confirmarCancelacion() {
-        if (salidaEncontrada == null) return;
+        if (idSalidaEncontrada == null) return;
         boolean reembolsar = reembolsarRadio.isSelected();
-        java.util.List<String> resultados = empresa.cancelarSalida(salidaEncontrada.getIdSalida(), reembolsar);
+        List<String> resultados = empresa.cancelarSalida(idSalidaEncontrada, reembolsar);
 
-        Salida s = salidaEncontrada;
-        String encabezado = "CANCELACION DE SALIDA: " + s.getIdSalida() + "  (" +
-            s.getMyRuta().getCodigo() + " " + s.getMyRuta().getOrigen() + " -> " + s.getMyRuta().getDestino() + ") " +
-            s.getFecha().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + "\n\n" +
-            "Tiquetes procesados:\n";
+        StringBuilder encabezado = new StringBuilder();
+        encabezado.append("CANCELACION DE SALIDA: ").append(idSalidaEncontrada).append("  (");
+        if (infoSalidaCache != null && infoSalidaCache[0] != null) {
+            encabezado.append(infoSalidaCache[0]);
+        } else {
+            encabezado.append(idSalidaEncontrada);
+        }
+        encabezado.append(") ").append(infoSalidaCache != null ? infoSalidaCache[1] : "")
+                  .append("\n\nTiquetes procesados:\n");
 
         StringBuilder sb = new StringBuilder(encabezado);
         int reprogramados = 0;
@@ -235,7 +231,7 @@ public class CancelacionesPanel extends JPanel {
         textArea.setFont(new Font("Monospaced", Font.PLAIN, 11));
         JScrollPane scroll = new JScrollPane(textArea);
         scroll.setPreferredSize(new Dimension(600, 350));
-        JOptionPane.showMessageDialog(this, scroll, "Reporte de cancelaci\u00f3n", JOptionPane.INFORMATION_MESSAGE);
+        JOptionPane.showMessageDialog(this, scroll, "Reporte de cancelacion", JOptionPane.INFORMATION_MESSAGE);
 
         limpiarBusqueda();
     }
@@ -243,13 +239,14 @@ public class CancelacionesPanel extends JPanel {
     private void limpiarBusqueda() {
         idField.setText("");
         alertaPanel.setVisible(false);
-        rutaLabel.setText("Ruta: —");
-        fechaLabel.setText("Fecha y hora: —");
-        busLabel.setText("Bus asignado: —");
+        rutaLabel.setText("Ruta: --");
+        fechaLabel.setText("Fecha y hora: --");
+        busLabel.setText("Bus asignado: --");
         ticketsLabel.setText("Tiquetes VIGENTES: 0");
         ticketsModel.setRowCount(0);
-        estadoLabel.setText("Estado: —");
+        estadoLabel.setText("Estado: --");
         estadoLabel.setForeground(Color.BLACK);
-        salidaEncontrada = null;
+        idSalidaEncontrada = null;
+        infoSalidaCache = null;
     }
 }

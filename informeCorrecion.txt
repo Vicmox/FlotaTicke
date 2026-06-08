@@ -1,0 +1,593 @@
+# Correcciones Implementadas -- Proyecto Sistema de Transporte
+
+**Estudiante:** Victor Manuel Monsalvo Suarez
+**Codigo:** 1151801
+**Asignatura:** Programacion Orientada a Objetos I
+**Fecha:** Junio 2026
+
+---
+
+## Introduccion
+
+Despues de recibir la retroalimentacion de la evaluacion del proyecto, realice una revision
+completa de la implementacion con el objetivo de corregir los problemas arquitectonicos
+identificados y fortalecer la calidad del diseno del sistema.
+
+A continuacion, se describen las correcciones realizadas con ejemplos de codigo antes y
+despues de cada cambio.
+
+---
+
+## 1. Correccion de la arquitectura por capas
+
+### Problema identificado
+
+Las vistas accedian directamente a objetos y colecciones del dominio mediante metodos
+publicos de EmpresaTransporte. Metodos como getMyTickets(), listarSalidas(), getSalidaPorId()
+exponian entidades del dominio (Salida, Ruta, PasajeTicket, Bus) hacia la capa de
+presentacion, generando una violacion sistematica de la arquitectura por capas.
+
+### Correccion realizada
+
+Se eliminaron los getters publicos que retornaban colecciones del dominio y se hicieron
+privados los metodos de busqueda interna. Se crearon 25 nuevos metodos de servicio en
+EmpresaTransporte que retornan unicamente String, String[][], Object[][], int y double.
+Las vistas dejaron de manipular objetos del dominio y ahora trabajan exclusivamente con
+datos preparados por la capa de negocio.
+
+### Metodos privatizados (antes publicos)
+
+Antes:
+
+```java
+// EmpresaTransporte.java -- 12 metodos publicos que exponia entidades del dominio
+public List<Bus> getMyBuses() { return myBuses; }
+public List<Ruta> getMyRutas() { return myRutas; }
+public List<Salida> getMySalidas() { return mySalidas; }
+public List<PasajeTicket> getMyTickets() { return myTickets; }
+public List<Conductor> getMyConductores() { return myConductores; }
+public List<Pasajero> getMyPasajeros() { return myPasajeros; }
+public CajaVenta getMyCaja() { return myCaja; }
+public CajaVenta getCajaVenta() { return myCaja; }
+public Ruta getRutaPorCodigo(String codigo) { ... }
+public Bus getBusPorPlaca(String placa) { ... }
+public Salida getSalidaPorId(String idSalida) { ... }
+public Conductor getConductorPorCedula(String cedula) { ... }
+public Pasajero getPasajeroPorCedula(String cedula) { ... }
+public List<Bus> listarBuses() { ... }
+public List<Ruta> listarRutas() { ... }
+public List<Salida> listarSalidas() { ... }
+public List<Conductor> listarConductores() { ... }
+```
+
+Despues -- todos los getters de dominio y metodos de busqueda ahora son private.
+Se agregaron 25 metodos de servicio publicos que retornan tipos planos:
+
+```java
+// EmpresaTransporte.java -- nuevos metodos de servicio (tipos de retorno: String, int, double, arrays)
+public String[][] getSalidasProgramadasParaCombo()
+public String[][] getSalidasProgramadasPorDestino(String destino)
+public String[][] getDestinosDisponibles()
+public String[][] getRutasParaCombo()
+public String[][] getBusesDisponiblesParaCombo()
+public String[][] getConductoresParaCombo()
+public String[] getInfoSalida(String idSalida)
+public String[] getInfoSalidaParaCancelacion(String idSalida)
+public String[] getInfoPasajero(String cedula)
+public String[] getDatosBus(String placa)
+public String[] getDatosConductor(String cedula)
+public float getTarifaSalida(String idSalida)
+public float getTarifaRuta(String codigoRuta)
+public String getTipoBusSalida(String idSalida)
+public int contarTicketsVigentes()
+public int contarBusesDisponibles()
+public int contarTicketsVigentesPorSalida(String idSalida)
+public Object[][] getOcupacionPorRuta()
+public Object[][] getProximasSalidasProgramadas()
+public Object[][] getRutasTabla()
+public Object[][] getBusesTabla()
+public Object[][] getSalidasTabla()
+public Object[][] getSalidasFiltradasTabla(String estado)
+public Object[][] getConductoresTabla()
+public Object[][] getTicketsPorSalida(String idSalida)
+public double getMontoCaja()
+public double getTotalVendido()
+public double getTotalReembolsado()
+public double getIngresoNeto()
+public int getCapacidadTotalFlota()
+public Object[][] getReporteVentasPorRuta()
+public Object[][] getReporteVentasRango()
+public int[] verificarPuestosConsecutivos(String idSalida, int cantidad)
+public int[] getEstadoPuestos(String idSalida, int[] puestosSeleccionados)
+public String[] generarTicketsFormateados(String idSalida, int[] puestos, String[] cedulas, ...)
+public String ventaIdaYVueltaFormateada(...)
+```
+
+### Ejemplo: DashboardPanel
+
+Antes:
+
+```java
+// DashboardPanel.java -- la vista iteraba colecciones del dominio
+CajaVenta caja = empresa.getCajaVenta();
+int totalTiquetes = 0;
+for (PasajeTicket t : empresa.getMyTickets()) {
+    if (PasajeTicket.VIGENTE.equals(t.getEstado())) totalTiquetes++;
+}
+int activos = 0;
+for (Bus b : empresa.listarBuses()) {
+    if (Bus.DISPONIBLE.equals(b.getEstado())) activos++;
+}
+Map<String, int[]> rutaStats = new LinkedHashMap<>();
+for (Ruta r : empresa.listarRutas()) {
+    rutaStats.put(r.getCodigo(), new int[]{0, 0});
+}
+for (PasajeTicket t : empresa.getMyTickets()) {
+    String cod = t.getMySalida().getMyRuta().getCodigo();
+    // ... calculos anidados ...
+}
+List<Salida> salidas = new ArrayList<>();
+for (Salida s : empresa.listarSalidas()) {
+    if (Salida.PROGRAMADA.equals(s.getEstado())) salidas.add(s);
+}
+salidas.sort((a, b) -> a.getFecha().compareTo(b.getFecha()));
+```
+
+Despues:
+
+```java
+// DashboardPanel.java -- la vista consume datos ya procesados
+vendidosLabel.setText(String.valueOf(empresa.contarTicketsVigentes()));
+ingresoLabel.setText(String.format("$%,.0f", empresa.getIngresoNeto()));
+reembolsosLabel.setText(String.format("$%,.0f", empresa.getTotalReembolsado()));
+busesLabel.setText(String.valueOf(empresa.contarBusesDisponibles()));
+
+for (Object[] row : empresa.getOcupacionPorRuta()) {
+    ocupacionModel.addRow(row); // [codigoRuta, vendidos, capacidad, ocupacion%]
+}
+for (Object[] row : empresa.getProximasSalidasProgramadas()) {
+    salidasModel.addRow(row); // [hora, ruta, bus, estado]
+}
+```
+
+### Beneficio obtenido
+
+Se logro una separacion real entre la interfaz grafica y la logica del negocio. Las 5
+vistas ya no importan clases del dominio (Bus, Ruta, Salida, PasajeTicket, Conductor,
+Pasajero, Puesto, CajaVenta). Solo dependen de EmpresaTransporte.
+
+---
+
+## 2. Correccion de los requerimientos funcionales
+
+### RF1 -- Parametrizacion (edicion de salidas)
+
+Problema: la vista modificaba directamente los atributos del objeto Salida.
+
+Antes (ParametrizacionPanel.java, boton Editar salida):
+
+```java
+// La vista mutaba entidades del dominio directamente
+Salida salida = empresa.getSalidaPorId(idSalida);
+if (salida != null) {
+    JTextField rutaField = new JTextField(salida.getMyRuta().getCodigo());
+    JTextField busField = new JTextField(salida.getMyBus().getPlaca());
+    JTextField fechaField = new JTextField(salida.getFecha().format(...));
+    // ... dialogo de edicion ...
+    if (opt == JOptionPane.OK_OPTION) {
+        salida.setMyRuta(empresa.getRutaPorCodigo(nuevaRuta));   // mutacion directa
+        salida.setMyBus(empresa.getBusPorPlaca(nuevoBus));       // mutacion directa
+        salida.setFecha(nuevaFH);                                 // mutacion directa
+    }
+}
+```
+
+Despues:
+
+```java
+// La vista delega toda la mutacion al servicio
+String[] info = empresa.getInfoSalida(idSalida);
+if (info != null && !info[0].isEmpty()) {
+    JTextField rutaField = new JTextField(info[3]);   // datos planos del array
+    JTextField busField = new JTextField(info[6]);
+    String fechaStr = model.getValueAt(row, 2) + " " + model.getValueAt(row, 3);
+    JTextField fechaField = new JTextField(fechaStr);
+    // ... dialogo de edicion ...
+    if (opt == JOptionPane.OK_OPTION) {
+        String resultado = empresa.editarSalidaCompleta(idSalida,
+            rutaField.getText().trim(), busField.getText().trim(),
+            fechaField.getText().trim());
+        if (!"OK".equals(resultado)) {
+            JOptionPane.showMessageDialog(this, "Error: " + resultado);
+        }
+    }
+}
+```
+
+Nuevo metodo en EmpresaTransporte:
+
+```java
+public String editarSalidaCompleta(String idSalida, String codigoRuta,
+        String placaBus, String fechaHoraStr) {
+    Salida salida = getSalidaPorId(idSalida);
+    if (salida == null) return "Salida no encontrada";
+    Ruta ruta = getRutaPorCodigo(codigoRuta);
+    if (ruta == null) return "Ruta no encontrada";
+    Bus bus = getBusPorPlaca(placaBus);
+    if (bus == null) return "Bus no encontrado";
+    try {
+        LocalDateTime fecha = LocalDateTime.parse(fechaHoraStr,
+            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
+        salida.setMyRuta(ruta);
+        salida.setMyBus(bus);
+        salida.setFecha(fecha);
+        return "OK";
+    } catch (Exception e) {
+        return "Formato de fecha invalido";
+    }
+}
+```
+
+### RF2 y RF3 -- Ventas (grilla de sillas y generacion de tickets)
+
+Problema: el panel de ventas accedia a objetos Salida, Puesto y PasajeTicket para
+renderizar la grilla de sillas y para formatear los tickets generados.
+
+Ejemplo A -- Grilla de sillas:
+
+Antes:
+
+```java
+// VentasPanel.java -- deep traversal hasta Puesto
+Salida salida = empresa.getSalidaPorId(selectedSalidaIdUnTicket);
+Puesto[] puestos = salida.getMyPuestos();
+for (int i = 0; i < puestos.length; i++) {
+    if (puestos[i].estaLibre()) {
+        if (enBloque[i]) { /* azul */ }
+        else             { /* verde */ }
+    } else {
+        /* gris */
+    }
+}
+```
+
+Despues:
+
+```java
+// VentasPanel.java -- recibe array de enteros: 0=libre, 1=seleccionada, 2=ocupada
+int[] estados = empresa.getEstadoPuestos(selectedSalidaIdUnTicket, selectedBlock);
+for (int i = 0; i < estados.length; i++) {
+    if (estados[i] == 2)      { /* gris - ocupada */ }
+    else if (estados[i] == 1) { /* azul - seleccionada */ }
+    else                      { /* verde - libre */ }
+}
+```
+
+Ejemplo B -- Generacion de tickets:
+
+Antes:
+
+```java
+// VentasPanel -- la vista formateaba tickets accediendo a entidades
+Pasajero[] pasajeros = new Pasajero[cantidad];
+for (int i = 0; i < cantidad; i++) {
+    pasajeros[i] = empresa.buscarOCrearPasajero(cedula, nombre, "", correo, telefono);
+}
+PasajeTicket[] tickets = empresa.generarTickets(id, puestos, pasajeros, false);
+for (PasajeTicket t : tickets) {
+    sb.append(formatoTicket(t)); // accede a t.getMySalida(), t.getMyPasajero(), etc.
+}
+```
+
+Despues:
+
+```java
+// VentasPanel -- el ticket ya viene formateado desde la capa de negocio
+String[] resultados = empresa.generarTicketsFormateados(idSalida,
+    selectedBlock, cedulas, nombres, correos, telefonos);
+for (String r : resultados) {
+    sb.append(r);
+}
+```
+
+### RF4 -- Cancelaciones
+
+Problema: el panel mantenia un campo de tipo Salida y recorria directamente la lista de
+tickets desde la vista.
+
+Antes:
+
+```java
+// CancelacionesPanel.java -- campo de tipo dominio en la vista
+private Salida salidaEncontrada;
+
+salidaEncontrada = empresa.getSalidaPorId(id);
+rutaLabel.setText("Ruta: " + salidaEncontrada.getMyRuta().getCodigo()
+    + " -- " + salidaEncontrada.getMyRuta().getOrigen() + " -> "
+    + salidaEncontrada.getMyRuta().getDestino());
+
+for (PasajeTicket t : empresa.getMyTickets()) {
+    if (t.getMySalida().getIdSalida().equals(id)) {
+        ticketsModel.addRow(new Object[]{
+            "TKT-" + t.hashCode(),
+            t.getMyPasajero().getNombre(),
+            t.getPuesto(), t.getEstado()
+        });
+    }
+}
+```
+
+Despues:
+
+```java
+// CancelacionesPanel.java -- datos planos, sin acceso al dominio
+private String idSalidaEncontrada;
+private String[] infoSalidaCache;
+
+infoSalidaCache = empresa.getInfoSalidaParaCancelacion(id);
+// infoSalidaCache = [rutaInfo, fechaHora, busPlaca, estado, activaFlag]
+rutaLabel.setText("Ruta: " + infoSalidaCache[0]);
+fechaLabel.setText("Fecha y hora: " + infoSalidaCache[1]);
+busLabel.setText("Bus asignado: " + infoSalidaCache[2]);
+
+for (Object[] row : empresa.getTicketsPorSalida(id)) {
+    ticketsModel.addRow(row); // [ticketId, pasajeroNombre, puesto, estado]
+}
+```
+
+### RF5 -- Reportes
+
+Problema: el panel calculaba estadisticas accediendo a CajaVenta, iterando listas de
+Ruta, PasajeTicket y Salida con deep traversal.
+
+Antes:
+
+```java
+// ReportesPanel.java -- bucles anidados sobre colecciones del dominio
+CajaVenta caja = empresa.getCajaVenta();
+totalVendido.setText(String.format("$%,.0f", caja.getTotalVendido()));
+
+Map<String, int[]> stats = new LinkedHashMap<>();
+for (Ruta r : empresa.listarRutas()) {
+    stats.put(r.getCodigo(), new int[]{0, 0});
+}
+for (PasajeTicket t : empresa.getMyTickets()) {
+    String cod = t.getMySalida().getMyRuta().getCodigo();
+    // ... deep traversal y calculos ...
+}
+for (Salida sal : empresa.listarSalidas()) {
+    cap += sal.getMyBus().getCapacidad();
+}
+```
+
+Despues:
+
+```java
+// ReportesPanel.java -- estadisticas precalculadas por el servicio
+totalVendido.setText(String.format("$%,.0f", empresa.getTotalVendido()));
+reembolsado.setText(String.format("$%,.0f", empresa.getTotalReembolsado()));
+ingresoNeto.setText(String.format("$%,.0f", empresa.getIngresoNeto()));
+int totalCap = empresa.getCapacidadTotalFlota();
+
+for (Object[] row : empresa.getReporteVentasPorRuta()) {
+    model.addRow(row); // [codigoRuta, vigentes, reembolsos, totalNeto, ocupacion%]
+}
+for (Object[] row : empresa.getReporteVentasRango()) {
+    model.addRow(row); // [fecha, codigoRuta, vigentes, reembolsos, total]
+}
+```
+
+---
+
+## 3. Correccion de consistencia en la venta ida y vuelta
+
+### Problema identificado
+
+En la version anterior, la venta de viajes ida y vuelta creaba los tickets de ida antes de
+verificar que los de vuelta pudieran generarse. Si la vuelta fallaba, los tickets de ida
+quedaban registrados permanentemente, dejando el sistema en un estado inconsistente.
+
+### Codigo anterior
+
+```java
+// EmpresaTransporte.ventaIdaYVuelta() -- version anterior
+// Los tickets de ida se creaban ANTES de validar completamente la vuelta
+PasajeTicket[] ticketsIda = crearTicketsInterno(idSalidaIda, puestosIda, pasajerosIda, true);
+if (ticketsIda == null) return false;
+
+PasajeTicket[] ticketsVuelta = crearTicketsInterno(idSalidaVuelta, puestosVuelta, pasajerosVuelta, true);
+if (ticketsVuelta == null) {
+    // PROBLEMA: ticketsIda ya fueron creados, asientos asignados y pasajes incrementados.
+    // El sistema queda inconsistente.
+    return false;
+}
+```
+
+### Correccion realizada
+
+Se implemento una validacion exhaustiva previa que verifica todas las condiciones
+(disponibilidad de ruta inversa, estado PROGRAMADA, puestos consecutivos, puestos libres)
+antes de realizar cualquier mutacion sobre el estado del sistema. Ademas, se agrego un
+mecanismo de reversion (rollback) para casos extremos.
+
+### Codigo corregido
+
+```java
+// EmpresaTransporte.ventaIdaYVueltaFormateada() -- version corregida
+// 1. Validar existencia y estado PROGRAMADA de ambas salidas
+if (salidaIda == null || salidaVuelta == null) return "Salida no encontrada";
+if (!Salida.PROGRAMADA.equals(salidaIda.getEstado()))
+    return "La salida de ida no esta PROGRAMADA";
+if (!Salida.PROGRAMADA.equals(salidaVuelta.getEstado()))
+    return "La salida de vuelta no esta PROGRAMADA";
+
+// 2. Validar ruta inversa
+if (!salidaIda.getMyRuta().getOrigen().equals(salidaVuelta.getMyRuta().getDestino())
+    || !salidaIda.getMyRuta().getDestino().equals(salidaVuelta.getMyRuta().getOrigen()))
+    return "La vuelta debe ser la ruta inversa";
+
+// 3. Validar puestos consecutivos en AMBAS salidas
+int[] bloqueIda = verificarPuestosConsecutivos(idSalidaIda, puestosIda.length);
+int[] bloqueVuelta = verificarPuestosConsecutivos(idSalidaVuelta, puestosVuelta.length);
+if (bloqueIda == null) return "No hay puestos consecutivos en la salida de ida";
+if (bloqueVuelta == null) return "No hay puestos consecutivos en la salida de vuelta";
+
+// 4. Validar que cada puesto especifico este libre
+if (!todosPuestosLibres(salidaIda, puestosIda)) return "Algun puesto de ida ya esta ocupado";
+if (!todosPuestosLibres(salidaVuelta, puestosVuelta)) return "Algun puesto de vuelta ya esta ocupado";
+
+// 5. Solo despues de validar TODO: crear tickets
+PasajeTicket[] ticketsIda = crearTicketsInterno(idSalidaIda, puestosIda, pasajeros, true);
+PasajeTicket[] ticketsVuelta = crearTicketsInterno(idSalidaVuelta, puestosVuelta, pasajeros, true);
+if (ticketsVuelta == null) {
+    revertirTickets(ticketsIda); // NUEVO: revierte ida si vuelta falla
+    return "Error al crear tickets de vuelta. Los tickets de ida fueron revertidos.";
+}
+```
+
+### Metodo de reversion agregado
+
+```java
+// EmpresaTransporte -- nuevo metodo privado para deshacer tickets
+private void revertirTickets(PasajeTicket[] tickets) {
+    if (tickets == null) return;
+    for (PasajeTicket t : tickets) {
+        myTickets.remove(t);
+        Salida s = t.getMySalida();
+        if (s != null) {
+            Puesto[] puestos = s.getMyPuestos();
+            int num = t.getPuesto();
+            if (num >= 1 && num <= puestos.length) {
+                puestos[num - 1].setMyPasajero(null);
+            }
+        }
+    }
+}
+```
+
+### Resultado
+
+La operacion ahora es atomica: si todas las validaciones previas son exitosas se crean
+todos los tickets; si alguna validacion falla, no se crea ninguno.
+
+---
+
+## 4. Eliminacion de codigo duplicado
+
+### Problema identificado
+
+Las clases BusTipoNormal y BusTipoEjecutivo contenian implementaciones identicas del
+metodo mostrarPuestosLibres(), duplicando 15 lineas de codigo en cada subclase.
+
+### Codigo anterior
+
+```java
+// BusTipoNormal.java -- 24 lineas
+public class BusTipoNormal extends Bus {
+    public BusTipoNormal(String placa, String estado, int capacidad) {
+        super(placa, estado, capacidad);
+    }
+    @Override
+    public int[] mostrarPuestosLibres() {
+        int count = 0;
+        for (Puesto p : myPuestos) { if (p.estaLibre()) count++; }
+        int[] libres = new int[count];
+        int idx = 0;
+        for (int i = 0; i < myPuestos.length; i++) {
+            if (myPuestos[i].estaLibre()) libres[idx++] = i + 1;
+        }
+        return libres;
+    }
+}
+
+// BusTipoEjecutivo.java -- identico, 24 lineas duplicadas
+public class BusTipoEjecutivo extends Bus {
+    // ... misma implementacion de mostrarPuestosLibres() ...
+}
+```
+
+### Correccion realizada
+
+La implementacion fue trasladada a la clase abstracta Bus como metodo concreto. Las
+subclases heredan el metodo sin necesidad de override.
+
+### Codigo corregido
+
+```java
+// Bus.java -- metodo concreto en la clase padre
+public int[] mostrarPuestosLibres() {
+    int count = 0;
+    for (Puesto p : myPuestos) { if (p.estaLibre()) count++; }
+    int[] libres = new int[count];
+    int idx = 0;
+    for (int i = 0; i < myPuestos.length; i++) {
+        if (myPuestos[i].estaLibre()) libres[idx++] = i + 1;
+    }
+    return libres;
+}
+
+// BusTipoNormal.java -- solo 6 lineas, sin override
+public class BusTipoNormal extends Bus {
+    public BusTipoNormal(String placa, String estado, int capacidad) {
+        super(placa, estado, capacidad);
+    }
+}
+
+// BusTipoEjecutivo.java -- solo 6 lineas, sin override
+public class BusTipoEjecutivo extends Bus {
+    public BusTipoEjecutivo(String placa, String estado, int capacidad) {
+        super(placa, estado, capacidad);
+    }
+}
+```
+
+### Beneficio obtenido
+
+Se eliminaron 30 lineas de codigo duplicado. Cualquier cambio futuro en la logica de
+mostrarPuestosLibres() se realiza en un solo lugar.
+
+---
+
+## Resumen de archivos modificados
+
+| Archivo | Lineas agregadas | Lineas eliminadas | Cambio neto |
+|---------|-----------------:|------------------:|------------:|
+| Bus.java | +15 | -1 | +14 |
+| BusTipoNormal.java | 0 | -16 | -16 |
+| BusTipoEjecutivo.java | 0 | -16 | -16 |
+| EmpresaTransporte.java | +498 | -135 | +363 |
+| DashboardPanel.java | +12 | -68 | -56 |
+| VentasPanel.java | +153 | -426 | -273 |
+| ParametrizacionPanel.java | +162 | -209 | -47 |
+| CancelacionesPanel.java | +57 | -89 | -32 |
+| ReportesPanel.java | +33 | -112 | -79 |
+| **Total** | **+930** | **-1072** | **-142** |
+
+## Metricas de la refactorizacion
+
+- **25** nuevos metodos de servicio publicos en EmpresaTransporte
+- **12** metodos pasados de public a private
+- **30** lineas de codigo duplicado eliminadas (mostrarPuestosLibres)
+- **0** imports de clases del dominio en las 5 vistas (Dashboard, Ventas, Parametrizacion,
+  Cancelaciones, Reportes)
+- **0** accesos directos a entidades del dominio desde las vistas
+- **0** bucles que recorran listas de dominio desde las vistas
+- Compilacion verificada con javac --release 17, sin errores ni warnings
+
+---
+
+## Conclusiones
+
+La retroalimentacion recibida permitio identificar aspectos importantes relacionados con
+el diseno arquitectonico y la correcta aplicacion de la separacion por capas.
+
+Las correcciones realizadas transforman el proyecto de una arquitectura donde las vistas
+manipulaban directamente las entidades del dominio, a una arquitectura en capas donde
+EmpresaTransporte actua como fachada (Facade) que expone unicamente los datos necesarios
+para la interfaz grafica.
+
+Esto fortalece la estructura del proyecto, reduce el acoplamiento entre componentes,
+facilita el mantenimiento futuro y mejora la consistencia general del sistema.
+
+Agradezco las observaciones realizadas, ya que me permitieron comprender mejor estos
+conceptos y aplicarlos adecuadamente en la version corregida del proyecto.

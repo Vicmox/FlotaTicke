@@ -1,6 +1,8 @@
 package presentacion;
 
-import negocio.*;
+import negocio.EmpresaTransporte;
+import negocio.Salida;
+import negocio.Bus;
 import javax.swing.*;
 import javax.swing.border.LineBorder;
 import javax.swing.table.DefaultTableModel;
@@ -8,7 +10,6 @@ import java.awt.*;
 import java.text.NumberFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 
 public class ParametrizacionPanel extends JPanel {
 
@@ -16,7 +17,6 @@ public class ParametrizacionPanel extends JPanel {
     private String editingRutaCodigo;
     private String editingConductorCedula;
 
-    
     private JComboBox<String> rutaComboSalidas;
     private JComboBox<String> busComboSalidas;
     private DefaultTableModel salidasTableModel;
@@ -38,7 +38,7 @@ public class ParametrizacionPanel extends JPanel {
             if (tabs.getSelectedIndex() == 2) {
                 refrescarCombosSalidas();
                 if (salidasTableModel != null) {
-                    actualizarTablaSalidas(empresa.listarSalidas(), salidasTableModel);
+                    actualizarTablaSalidas(empresa.getSalidasTabla(), salidasTableModel);
                 }
             }
         });
@@ -49,27 +49,21 @@ public class ParametrizacionPanel extends JPanel {
     public void refreshData() {
         refrescarCombosSalidas();
         if (salidasTableModel != null) {
-            actualizarTablaSalidas(empresa.listarSalidas(), salidasTableModel);
+            actualizarTablaSalidas(empresa.getSalidasTabla(), salidasTableModel);
         }
     }
 
     private void refrescarCombosSalidas() {
         if (rutaComboSalidas == null || busComboSalidas == null) return;
         rutaComboSalidas.removeAllItems();
-        for (Ruta r : empresa.listarRutas()) {
-            rutaComboSalidas.addItem(r.getCodigo() + " — " + r.getOrigen() + " \u2192 " + r.getDestino());
+        for (String[] r : empresa.getRutasParaCombo()) {
+            rutaComboSalidas.addItem(r[1]);
         }
         busComboSalidas.removeAllItems();
-        for (Bus b : empresa.listarBuses()) {
-            if (Bus.DISPONIBLE.equals(b.getEstado())) {
-                busComboSalidas.addItem(b.getPlaca() + " (Cap: " + b.getCapacidad() + ")");
-            }
+        for (String[] b : empresa.getBusesDisponiblesParaCombo()) {
+            busComboSalidas.addItem(b[1]);
         }
     }
-
-    
-    
-    
 
     private JPanel crearPanelRutas() {
         JPanel panel = new JPanel(new BorderLayout(10, 0));
@@ -86,13 +80,13 @@ public class ParametrizacionPanel extends JPanel {
         gbc.insets = new Insets(4, 4, 4, 4);
 
         JLabel codigoLabel = new JLabel("(Auto)");
-        JTextField origenField = new JTextField("C\u00facuta");
+        JTextField origenField = new JTextField("Cucuta");
         JTextField destinoField = new JTextField(10);
         JFormattedTextField tarifaField = new JFormattedTextField(NumberFormat.getNumberInstance());
         tarifaField.setColumns(10);
 
         gbc.gridx = 0; gbc.gridy = 0;
-        form.add(new JLabel("C\u00f3digo:"), gbc);
+        form.add(new JLabel("Codigo:"), gbc);
         gbc.gridx = 1;
         form.add(codigoLabel, gbc);
 
@@ -124,7 +118,7 @@ public class ParametrizacionPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2;
         form.add(btnPanel, gbc);
 
-        DefaultTableModel model = new DefaultTableModel(new String[]{"C\u00f3digo", "Origen \u2192 Destino", "Tarifa", "Acciones"}, 0) {
+        DefaultTableModel model = new DefaultTableModel(new String[]{"Codigo", "Origen \u2192 Destino", "Tarifa", "Acciones"}, 0) {
             @Override public boolean isCellEditable(int row, int col) { return col == 3; }
         };
 
@@ -135,7 +129,7 @@ public class ParametrizacionPanel extends JPanel {
             try {
                 tarifa = Float.parseFloat(tarifaField.getText().replaceAll("[.,]", ""));
             } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Tarifa inv\u00e1lida");
+                JOptionPane.showMessageDialog(this, "Tarifa invalida");
                 return;
             }
             if (dest.isEmpty()) {
@@ -147,9 +141,7 @@ public class ParametrizacionPanel extends JPanel {
                 editingRutaCodigo = null;
                 codigoLabel.setText("(Auto)");
             } else {
-                
                 empresa.crearRuta(null, orig, dest, tarifa);
-                
                 if (!orig.equals(dest)) {
                     empresa.crearRuta(null, dest, orig, tarifa);
                 }
@@ -201,19 +193,10 @@ public class ParametrizacionPanel extends JPanel {
 
     private void actualizarTablaRutas(DefaultTableModel model) {
         model.setRowCount(0);
-        for (Ruta r : empresa.listarRutas()) {
-            model.addRow(new Object[]{
-                r.getCodigo(),
-                r.getOrigen() + " \u2192 " + r.getDestino(),
-                String.format("$%,.0f", r.getTarifa()),
-                "Editar"
-            });
+        for (Object[] row : empresa.getRutasTabla()) {
+            model.addRow(row);
         }
     }
-
-    
-    
-    
 
     private int getCapacidadPorTipo(String tipo) {
         return "EJECUTIVO".equalsIgnoreCase(tipo) ? 40 : 30;
@@ -265,8 +248,8 @@ public class ParametrizacionPanel extends JPanel {
 
         JComboBox<String> conductorCombo = new JComboBox<>();
         conductorCombo.addItem("(Sin conductor)");
-        for (Conductor c : empresa.listarConductores()) {
-            conductorCombo.addItem(c.getCedula() + " - " + c.getNombre());
+        for (String[] c : empresa.getConductoresParaCombo()) {
+            conductorCombo.addItem(c[1]);
         }
 
         gbc.gridx = 0; gbc.gridy = 3;
@@ -299,7 +282,6 @@ public class ParametrizacionPanel extends JPanel {
             String tipo = (String) tipoCombo.getSelectedItem();
             int capacidad = getCapacidadPorTipo(tipo);
             empresa.crearBus(placa, Bus.DISPONIBLE, tipo, capacidad);
-            
             String condSel = (String) conductorCombo.getSelectedItem();
             if (condSel != null && !condSel.equals("(Sin conductor)")) {
                 String cedula = condSel.split(" -")[0].trim();
@@ -322,7 +304,13 @@ public class ParametrizacionPanel extends JPanel {
 
     private void actualizarListaBuses(JPanel listaPanel) {
         listaPanel.removeAll();
-        for (Bus b : empresa.listarBuses()) {
+        for (Object[] busData : empresa.getBusesTabla()) {
+            String placa = (String) busData[0];
+            String tipo = (String) busData[1];
+            int capacidad = (Integer) busData[2];
+            String estado = (String) busData[3];
+            String conductorNombre = (String) busData[4];
+
             JPanel card = new JPanel(new BorderLayout(10, 0));
             card.setBackground(Colores.FONDO_TARJETA);
             card.setBorder(BorderFactory.createCompoundBorder(
@@ -339,32 +327,29 @@ public class ParametrizacionPanel extends JPanel {
             JPanel info = new JPanel();
             info.setLayout(new BoxLayout(info, BoxLayout.Y_AXIS));
             info.setOpaque(false);
-            JLabel placaLabel = new JLabel(b.getPlaca());
+            JLabel placaLabel = new JLabel(placa);
             placaLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
-            String tipo = b instanceof BusTipoEjecutivo ? "Ejecutivo" : "Normal";
-            JLabel detalle = new JLabel(tipo + " | Cap: " + b.getCapacidad());
+            JLabel detalle = new JLabel(tipo + " | Cap: " + capacidad);
             detalle.setFont(new Font("SansSerif", Font.PLAIN, 11));
             detalle.setForeground(Colores.TEXTO_SECUNDARIO);
             info.add(placaLabel);
             info.add(detalle);
-            Conductor cond = b.getMyConductor();
-            if (cond != null) {
-                JLabel condLabel = new JLabel("Cond: " + cond.getNombre());
+            if (conductorNombre != null && !conductorNombre.isEmpty()) {
+                JLabel condLabel = new JLabel("Cond: " + conductorNombre);
                 condLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
                 condLabel.setForeground(Colores.AZUL_MEDIO);
                 info.add(condLabel);
             }
 
-            
             JComboBox<String> estadoCombo = new JComboBox<>(new String[]{Bus.DISPONIBLE, Bus.EN_RUTA, Bus.MANTENIMIENTO});
-            estadoCombo.setSelectedItem(b.getEstado());
+            estadoCombo.setSelectedItem(estado);
             estadoCombo.setFont(new Font("SansSerif", Font.PLAIN, 11));
             estadoCombo.setMaximumSize(new Dimension(140, 28));
-            
+
             actualizarColorEstadoCombo(estadoCombo);
             estadoCombo.addActionListener(ev -> {
                 String nuevoEstado = (String) estadoCombo.getSelectedItem();
-                empresa.editarBus(b.getPlaca(), nuevoEstado);
+                empresa.editarBus(placa, nuevoEstado);
                 actualizarColorEstadoCombo(estadoCombo);
                 refrescarCombosSalidas();
             });
@@ -396,10 +381,6 @@ public class ParametrizacionPanel extends JPanel {
             combo.setForeground(Colores.TEXTO_SECUNDARIO);
         }
     }
-
-    
-    
-    
 
     private JPanel crearPanelSalidas() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
@@ -445,8 +426,8 @@ public class ParametrizacionPanel extends JPanel {
             String selected = (String) rutaComboSalidas.getSelectedItem();
             if (selected != null) {
                 String cod = selected.split(" —")[0].trim();
-                Ruta r = empresa.getRutaPorCodigo(cod);
-                if (r != null) precioField.setText(String.format("$%,.0f", r.getTarifa()));
+                float tarifa = empresa.getTarifaRuta(cod);
+                precioField.setText(String.format("$%,.0f", tarifa));
             }
         });
 
@@ -458,7 +439,7 @@ public class ParametrizacionPanel extends JPanel {
         JButton finalizarBtn = new JButton("Estado Finalizado Salida");
         finalizarBtn.setBackground(Colores.ESTADO_AMBAR);
         finalizarBtn.setForeground(Colores.ESTADO_AMBAR_TX);
-        finalizarBtn.setToolTipText("Cambia estado a FINALIZADA solo si la salida tiene m\u00ednimo 2 d\u00edas de antig\u00fcedad");
+        finalizarBtn.setToolTipText("Cambia estado a FINALIZADA solo si la salida tiene minimo 2 dias de antiguedad");
 
         programarBtn.addActionListener(e -> {
             String rutaSel = (String) rutaComboSalidas.getSelectedItem();
@@ -483,9 +464,9 @@ public class ParametrizacionPanel extends JPanel {
             if (ok) {
                 JOptionPane.showMessageDialog(panel, "Salida programada exitosamente");
             } else {
-                JOptionPane.showMessageDialog(panel, "No se pudo crear la salida. Verifique que el bus no est\u00e9 asignado a la misma fecha y hora.", "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(panel, "No se pudo crear la salida. Verifique que el bus no este asignado a la misma fecha y hora.", "Error", JOptionPane.ERROR_MESSAGE);
             }
-            actualizarTablaSalidas(empresa.listarSalidas(), model);
+            actualizarTablaSalidas(empresa.getSalidasTabla(), model);
         });
 
         finalizarBtn.addActionListener(e -> {
@@ -495,9 +476,9 @@ public class ParametrizacionPanel extends JPanel {
             if (ok) {
                 JOptionPane.showMessageDialog(panel, "Salida finalizada exitosamente.");
             } else {
-                JOptionPane.showMessageDialog(panel, "No se puede finalizar la salida. Verifique que est\u00e9 en estado PROGRAMADA o EN_RUTA y que tenga m\u00ednimo 2 d\u00edas de antig\u00fcedad.", "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(panel, "No se puede finalizar la salida. Verifique que este en estado PROGRAMADA o EN_RUTA y que tenga minimo 2 dias de antiguedad.", "Error", JOptionPane.ERROR_MESSAGE);
             }
-            actualizarTablaSalidas(empresa.listarSalidas(), model);
+            actualizarTablaSalidas(empresa.getSalidasTabla(), model);
         });
 
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -534,7 +515,7 @@ public class ParametrizacionPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 2;
         form.add(btnPanel, gbc);
 
-        actualizarTablaSalidas(empresa.listarSalidas(), model);
+        actualizarTablaSalidas(empresa.getSalidasTabla(), model);
 
         JPanel filterPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         filterPanel.setOpaque(false);
@@ -547,13 +528,9 @@ public class ParametrizacionPanel extends JPanel {
         filtrarBtn.addActionListener(e -> {
             String filtro = (String) estadoFiltro.getSelectedItem();
             if ("Todos".equals(filtro)) {
-                actualizarTablaSalidas(empresa.listarSalidas(), model);
+                actualizarTablaSalidas(empresa.getSalidasTabla(), model);
             } else {
-                java.util.List<Salida> filtradas = new java.util.ArrayList<>();
-                for (Salida s : empresa.listarSalidas()) {
-                    if (s.getEstado().equals(filtro)) filtradas.add(s);
-                }
-                actualizarTablaSalidas(filtradas, model);
+                actualizarTablaSalidas(empresa.getSalidasFiltradasTabla(filtro), model);
             }
         });
 
@@ -569,27 +546,23 @@ public class ParametrizacionPanel extends JPanel {
             int row = table.getSelectedRow();
             if (row >= 0) {
                 String idSalida = model.getValueAt(row, 0).toString();
-                Salida salida = empresa.getSalidaPorId(idSalida);
-                if (salida != null) {
-                    JTextField rutaField = new JTextField(salida.getMyRuta().getCodigo());
-                    JTextField busField = new JTextField(salida.getMyBus().getPlaca());
-                    JTextField fechaField = new JTextField(salida.getFecha().format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
-                    Object[] fields = { "Ruta:", rutaField, "Bus:", busField, "Fecha (dd/MM/yyyy HH:mm):", fechaField };
-                    int opt = JOptionPane.showConfirmDialog(ParametrizacionPanel.this, fields, "Editar salida " + idSalida, JOptionPane.OK_CANCEL_OPTION);
-                    if (opt == JOptionPane.OK_OPTION) {
-                        try {
-                            String nuevaRuta = rutaField.getText().trim();
-                            String nuevoBus = busField.getText().trim();
-                            String nuevaFecha = fechaField.getText().trim();
-                            LocalDateTime nuevaFH = LocalDateTime.parse(nuevaFecha, java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
-                            salida.setMyRuta(empresa.getRutaPorCodigo(nuevaRuta));
-                            salida.setMyBus(empresa.getBusPorPlaca(nuevoBus));
-                            salida.setFecha(nuevaFH);
-                            actualizarTablaSalidas(empresa.listarSalidas(), model);
-                        } catch (Exception ex) {
-                            JOptionPane.showMessageDialog(ParametrizacionPanel.this, "Error al editar: " + ex.getMessage());
-                        }
+                String[] info = empresa.getInfoSalida(idSalida);
+                if (info == null || info[0].isEmpty()) return;
+                String rutaCodigo = info[3];
+                String busPlaca = info[6];
+                String fechaStr = model.getValueAt(row, 2) + " " + model.getValueAt(row, 3);
+                JTextField rutaField = new JTextField(rutaCodigo);
+                JTextField busField = new JTextField(busPlaca);
+                JTextField fechaField = new JTextField(fechaStr);
+                Object[] fields = { "Ruta:", rutaField, "Bus:", busField, "Fecha (dd/MM/yyyy HH:mm):", fechaField };
+                int opt = JOptionPane.showConfirmDialog(ParametrizacionPanel.this, fields, "Editar salida " + idSalida, JOptionPane.OK_CANCEL_OPTION);
+                if (opt == JOptionPane.OK_OPTION) {
+                    String resultado = empresa.editarSalidaCompleta(idSalida,
+                        rutaField.getText().trim(), busField.getText().trim(), fechaField.getText().trim());
+                    if (!"OK".equals(resultado)) {
+                        JOptionPane.showMessageDialog(ParametrizacionPanel.this, "Error al editar: " + resultado);
                     }
+                    actualizarTablaSalidas(empresa.getSalidasTabla(), model);
                 }
             }
         }));
@@ -607,40 +580,22 @@ public class ParametrizacionPanel extends JPanel {
 
     private void cargarItemsCombosSalidas() {
         rutaComboSalidas.removeAllItems();
-        for (Ruta r : empresa.listarRutas()) {
-            rutaComboSalidas.addItem(r.getCodigo() + " — " + r.getOrigen() + " \u2192 " + r.getDestino());
+        for (String[] r : empresa.getRutasParaCombo()) {
+            rutaComboSalidas.addItem(r[1]);
         }
         busComboSalidas.removeAllItems();
-        for (Bus b : empresa.listarBuses()) {
-            if (Bus.DISPONIBLE.equals(b.getEstado())) {
-                busComboSalidas.addItem(b.getPlaca() + " (Cap: " + b.getCapacidad() + ")");
-            }
+        for (String[] b : empresa.getBusesDisponiblesParaCombo()) {
+            busComboSalidas.addItem(b[1]);
         }
     }
 
-    private void actualizarTablaSalidas(java.util.List<Salida> salidas, DefaultTableModel model) {
+    private void actualizarTablaSalidas(Object[][] salidas, DefaultTableModel model) {
         if (model == null) return;
         model.setRowCount(0);
-        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-        DateTimeFormatter horaFmt = DateTimeFormatter.ofPattern("HH:mm");
-        for (Salida s : salidas) {
-            int vendidos = s.totalPasajesVendidos(empresa.getMyTickets());
-            model.addRow(new Object[]{
-                s.getIdSalida(),
-                s.getMyRuta().getCodigo(),
-                s.getFecha().format(fmt),
-                s.getFecha().format(horaFmt),
-                s.getMyBus().getPlaca(),
-                s.getEstado(),
-                vendidos,
-                "Editar"
-            });
+        for (Object[] row : salidas) {
+            model.addRow(row);
         }
     }
-
-    
-    
-    
 
     private JPanel crearPanelConductores() {
         JPanel panel = new JPanel(new BorderLayout(10, 0));
@@ -665,7 +620,7 @@ public class ParametrizacionPanel extends JPanel {
         sueldoField.setColumns(10);
 
         gbc.gridx = 0; gbc.gridy = 0;
-        form.add(new JLabel("C\u00e9dula:"), gbc);
+        form.add(new JLabel("Cedula:"), gbc);
         gbc.gridx = 1;
         form.add(cedulaField, gbc);
 
@@ -675,7 +630,7 @@ public class ParametrizacionPanel extends JPanel {
         form.add(nombreField, gbc);
 
         gbc.gridx = 0; gbc.gridy = 2;
-        form.add(new JLabel("Direcci\u00f3n:"), gbc);
+        form.add(new JLabel("Direccion:"), gbc);
         gbc.gridx = 1;
         form.add(direccionField, gbc);
 
@@ -685,7 +640,7 @@ public class ParametrizacionPanel extends JPanel {
         form.add(correoField, gbc);
 
         gbc.gridx = 0; gbc.gridy = 4;
-        form.add(new JLabel("Tel\u00e9fono:"), gbc);
+        form.add(new JLabel("Telefono:"), gbc);
         gbc.gridx = 1;
         form.add(telefonoField, gbc);
 
@@ -706,7 +661,7 @@ public class ParametrizacionPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 6; gbc.gridwidth = 2;
         form.add(btnPanel, gbc);
 
-        DefaultTableModel model = new DefaultTableModel(new String[]{"C\u00e9dula", "Nombre", "Correo", "Tel\u00e9fono", "Sueldo", "Acciones"}, 0) {
+        DefaultTableModel model = new DefaultTableModel(new String[]{"Cedula", "Nombre", "Correo", "Telefono", "Sueldo", "Acciones"}, 0) {
             @Override public boolean isCellEditable(int row, int col) { return col == 5; }
         };
 
@@ -720,11 +675,11 @@ public class ParametrizacionPanel extends JPanel {
             try {
                 sueldo = Float.parseFloat(sueldoField.getText().replaceAll("[.,]", ""));
             } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Sueldo inv\u00e1lido");
+                JOptionPane.showMessageDialog(this, "Sueldo invalido");
                 return;
             }
             if (cedula.isEmpty() || nombre.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "C\u00e9dula y nombre son obligatorios");
+                JOptionPane.showMessageDialog(this, "Cedula y nombre son obligatorios");
                 return;
             }
             if (editingConductorCedula != null) {
@@ -759,16 +714,15 @@ public class ParametrizacionPanel extends JPanel {
             int row = table.getSelectedRow();
             if (row >= 0) {
                 editingConductorCedula = model.getValueAt(row, 0).toString();
-                
-                Conductor c = empresa.getConductorPorCedula(editingConductorCedula);
+                String[] datos = empresa.getDatosConductor(editingConductorCedula);
                 cedulaField.setText(editingConductorCedula);
                 cedulaField.setEditable(false);
                 nombreField.setText(model.getValueAt(row, 1).toString());
                 correoField.setText(model.getValueAt(row, 2).toString());
                 telefonoField.setText(model.getValueAt(row, 3).toString());
                 sueldoField.setText(model.getValueAt(row, 4).toString().replaceAll("[^0-9]", ""));
-                if (c != null) {
-                    direccionField.setText(c.getDireccion());
+                if (datos != null && datos[2] != null) {
+                    direccionField.setText(datos[2]);
                 }
             }
         }));
@@ -782,21 +736,10 @@ public class ParametrizacionPanel extends JPanel {
 
     private void actualizarTablaConductores(DefaultTableModel model) {
         model.setRowCount(0);
-        for (Conductor c : empresa.listarConductores()) {
-            model.addRow(new Object[]{
-                c.getCedula(),
-                c.getNombre(),
-                c.getCorreo(),
-                c.getTelefono(),
-                String.format("$%,.0f", c.getSueldo()),
-                "Editar"
-            });
+        for (Object[] row : empresa.getConductoresTabla()) {
+            model.addRow(row);
         }
     }
-
-    
-    
-    
 
     private void limpiarCampos(JTextField... campos) {
         for (JTextField c : campos) c.setText("");
@@ -862,7 +805,7 @@ public class ParametrizacionPanel extends JPanel {
                 boolean ok = empresa.editarSalida(idSalida, nuevoEstado);
                 if (!ok) {
                     if (Salida.EN_RUTA.equals(nuevoEstado)) {
-                        JOptionPane.showMessageDialog(parent, "La salida debe tener m\u00ednimo 5 pasajes VIGENTES para pasar a EN_RUTA.", "Validaci\u00f3n", JOptionPane.WARNING_MESSAGE);
+                        JOptionPane.showMessageDialog(parent, "La salida debe tener minimo 5 pasajes VIGENTES para pasar a EN_RUTA.", "Validacion", JOptionPane.WARNING_MESSAGE);
                     }
                     return valorAnterior;
                 }

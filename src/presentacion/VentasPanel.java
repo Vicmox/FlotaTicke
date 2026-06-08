@@ -1,12 +1,11 @@
 package presentacion;
 
-import negocio.*;
+import negocio.EmpresaTransporte;
 import javax.swing.*;
 import javax.swing.border.LineBorder;
 import java.awt.*;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,7 +25,7 @@ public class VentasPanel extends JPanel {
         JPanel tabBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         tabBar.setOpaque(false);
 
-        JButton unTicketBtn = crearTabBtn("1 o m\u00e1s tiquetes", true);
+        JButton unTicketBtn = crearTabBtn("1 o mas tiquetes", true);
         JButton idaVueltaBtn = crearTabBtn("Ida y vuelta", false);
 
         subCardLayout = new CardLayout();
@@ -78,10 +77,6 @@ public class VentasPanel extends JPanel {
         }
         return btn;
     }
-
-    
-    
-    
 
     private JComboBox<String> salidaComboUnTicket;
     private JComboBox<String> destinoComboUnTicket;
@@ -142,7 +137,7 @@ public class VentasPanel extends JPanel {
         gbc.gridx = 0; gbc.gridy = 1;
         panel.add(new JLabel("Origen:"), gbc);
         gbc.gridx = 1;
-        JTextField origenField = new JTextField("C\u00facuta");
+        JTextField origenField = new JTextField("Cucuta");
         origenField.setEditable(false);
         panel.add(origenField, gbc);
 
@@ -239,10 +234,10 @@ public class VentasPanel extends JPanel {
         panel.add(titulo);
         panel.add(Box.createVerticalStrut(10));
 
-        resumenRuta = new JLabel("Ruta: —");
-        resumenSalida = new JLabel("Salida: —");
-        resumenBus = new JLabel("Bus: —");
-        resumenPuestos = new JLabel("Puestos: —");
+        resumenRuta = new JLabel("Ruta: --");
+        resumenSalida = new JLabel("Salida: --");
+        resumenBus = new JLabel("Bus: --");
+        resumenPuestos = new JLabel("Puestos: --");
         panel.add(resumenRuta);
         panel.add(resumenSalida);
         panel.add(resumenBus);
@@ -258,7 +253,7 @@ public class VentasPanel extends JPanel {
         panel.add(Box.createVerticalStrut(15));
 
         panel.add(new JLabel("Forma de pago:"));
-        panel.add(new JComboBox<>(new String[]{"Efectivo", "Tarjeta d\u00e9bito", "Tarjeta cr\u00e9dito"}));
+        panel.add(new JComboBox<>(new String[]{"Efectivo", "Tarjeta debito", "Tarjeta credito"}));
         panel.add(Box.createVerticalStrut(15));
 
         JButton generarBtn = new JButton("Generar tiquetes");
@@ -276,12 +271,14 @@ public class VentasPanel extends JPanel {
 
     private void cargarSalidasEnCombo(JComboBox<String> combo, String destino) {
         combo.removeAllItems();
-        for (Salida s : empresa.listarSalidas()) {
-            if (!Salida.PROGRAMADA.equals(s.getEstado())) continue;
-            if (destino == null || s.getMyRuta().getDestino().equalsIgnoreCase(destino)) {
-                combo.addItem(s.getIdSalida() + " — " + s.getMyRuta().getOrigen() + " \u2192 " + s.getMyRuta().getDestino()
-                    + " (" + s.getFecha().format(DateTimeFormatter.ofPattern("dd/MM HH:mm")) + ")");
-            }
+        String[][] items;
+        if (destino == null) {
+            items = empresa.getSalidasProgramadasParaCombo();
+        } else {
+            items = empresa.getSalidasProgramadasPorDestino(destino);
+        }
+        for (String[] item : items) {
+            combo.addItem(item[1]);
         }
         if (combo.getItemCount() == 0) {
             combo.addItem("-- No hay salidas disponibles --");
@@ -310,9 +307,7 @@ public class VentasPanel extends JPanel {
     private void onCantidadChanged() {
         int cantidad = (Integer) cantidadSpinner.getValue();
         if (selectedSalidaIdUnTicket == null) return;
-        Salida salida = empresa.getSalidaPorId(selectedSalidaIdUnTicket);
-        if (salida == null) return;
-        int[] bloque = empresa.verificarPuestosConsecutivos(salida, cantidad);
+        int[] bloque = empresa.verificarPuestosConsecutivos(selectedSalidaIdUnTicket, cantidad);
         if (bloque != null) {
             selectedBlock = bloque;
             rebuildSeatGridUnTicket();
@@ -332,63 +327,55 @@ public class VentasPanel extends JPanel {
     private void rebuildSeatGridUnTicket() {
         sillasGridUnTicket.removeAll();
         if (selectedSalidaIdUnTicket == null) return;
-        Salida salida = empresa.getSalidaPorId(selectedSalidaIdUnTicket);
-        if (salida == null) return;
-        Puesto[] puestos = salida.getMyPuestos();
+        int[] estados = empresa.getEstadoPuestos(selectedSalidaIdUnTicket, selectedBlock);
         int cols = 4;
-        int rows = (int) Math.ceil(puestos.length / (double) cols);
+        int rows = (int) Math.ceil(estados.length / (double) cols);
         sillasGridUnTicket.setLayout(new GridLayout(rows, cols, 4, 4));
 
-        boolean[] enBloque = new boolean[puestos.length];
-        if (selectedBlock != null) {
-            for (int p : selectedBlock) {
-                if (p >= 1 && p <= puestos.length) enBloque[p - 1] = true;
-            }
-        }
-
-        for (int i = 0; i < puestos.length; i++) {
+        for (int i = 0; i < estados.length; i++) {
             final int numPuesto = i + 1;
             JButton btn = new JButton(String.valueOf(numPuesto));
             btn.setPreferredSize(new Dimension(40, 40));
             btn.setFont(new Font("SansSerif", Font.BOLD, 10));
             btn.setFocusPainted(false);
             btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-            if (puestos[i].estaLibre()) {
-                if (enBloque[i]) {
-                    btn.setBackground(Colores.AZUL_PRIMARIO);
-                    btn.setForeground(Color.WHITE);
-                } else {
-                    btn.setBackground(Colores.ESTADO_VERDE);
-                    btn.setForeground(Colores.ESTADO_VERDE_TX);
-                }
-                btn.addActionListener(e -> {
-                    int cantidad = (Integer) cantidadSpinner.getValue();
-                    boolean puede = true;
-                    for (int j = 0; j < cantidad; j++) {
-                        int idx = numPuesto - 1 + j;
-                        if (idx >= puestos.length || !puestos[idx].estaLibre()) {
-                            puede = false; break;
-                        }
-                    }
-                    if (puede) {
-                        selectedBlock = new int[cantidad];
-                        for (int j = 0; j < cantidad; j++) selectedBlock[j] = numPuesto + j;
-                        rebuildSeatGridUnTicket();
-                        rebuildPasajeroForms(cantidad);
-                        actualizarResumenUnTicket();
-                    } else {
-                        JOptionPane.showMessageDialog(this, "No hay suficientes puestos consecutivos desde esta posici\u00f3n.", "Error", JOptionPane.WARNING_MESSAGE);
-                    }
-                });
-            } else {
+            if (estados[i] == 2) {
                 btn.setBackground(Colores.FONDO_SUPERFICIE);
                 btn.setForeground(Colores.TEXTO_SECUNDARIO);
                 btn.setEnabled(false);
+            } else if (estados[i] == 1) {
+                btn.setBackground(Colores.AZUL_PRIMARIO);
+                btn.setForeground(Color.WHITE);
+                btn.addActionListener(e -> seleccionarBloqueDesde(numPuesto, estados));
+            } else {
+                btn.setBackground(Colores.ESTADO_VERDE);
+                btn.setForeground(Colores.ESTADO_VERDE_TX);
+                btn.addActionListener(e -> seleccionarBloqueDesde(numPuesto, estados));
             }
             sillasGridUnTicket.add(btn);
         }
         sillasGridUnTicket.revalidate();
         sillasGridUnTicket.repaint();
+    }
+
+    private void seleccionarBloqueDesde(int numPuesto, int[] estadosActuales) {
+        int cantidad = (Integer) cantidadSpinner.getValue();
+        boolean puede = true;
+        for (int j = 0; j < cantidad; j++) {
+            int idx = numPuesto - 1 + j;
+            if (idx >= estadosActuales.length || estadosActuales[idx] == 2) {
+                puede = false; break;
+            }
+        }
+        if (puede) {
+            selectedBlock = new int[cantidad];
+            for (int j = 0; j < cantidad; j++) selectedBlock[j] = numPuesto + j;
+            rebuildSeatGridUnTicket();
+            rebuildPasajeroForms(cantidad);
+            actualizarResumenUnTicket();
+        } else {
+            JOptionPane.showMessageDialog(this, "No hay suficientes puestos consecutivos desde esta posicion.", "Error", JOptionPane.WARNING_MESSAGE);
+        }
     }
 
     private void rebuildPasajeroForms(int cantidad) {
@@ -416,37 +403,34 @@ public class VentasPanel extends JPanel {
             return;
         }
 
-        Pasajero[] pasajeros = new Pasajero[cantidad];
+        String[] cedulas = new String[cantidad];
+        String[] nombres = new String[cantidad];
+        String[] correos = new String[cantidad];
+        String[] telefonos = new String[cantidad];
         for (int i = 0; i < cantidad; i++) {
             PasajeroForm form = pasajeroForms.get(i);
-            String cedula = form.cedulaField.getText().trim();
-            String nombre = form.nombreField.getText().trim();
-            String correo = form.correoField.getText().trim();
-            String telefono = form.telefonoField.getText().trim();
-            if (cedula.isEmpty() || nombre.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Complete c\u00e9dula y nombre para el pasajero del puesto " + form.puesto);
+            cedulas[i] = form.cedulaField.getText().trim();
+            nombres[i] = form.nombreField.getText().trim();
+            correos[i] = form.correoField.getText().trim();
+            telefonos[i] = form.telefonoField.getText().trim();
+            if (cedulas[i].isEmpty() || nombres[i].isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Complete cedula y nombre para el pasajero del puesto " + form.puesto);
                 return;
             }
-            pasajeros[i] = empresa.buscarOCrearPasajero(cedula, nombre, "", correo, telefono);
         }
 
-        Salida salida = empresa.getSalidaPorId(selectedSalidaIdUnTicket);
-        PasajeTicket[] tickets = empresa.generarTickets(selectedSalidaIdUnTicket, selectedBlock, pasajeros, false);
-        if (tickets != null) {
+        String[] resultados = empresa.generarTicketsFormateados(selectedSalidaIdUnTicket,
+            selectedBlock, cedulas, nombres, correos, telefonos);
+        if (resultados != null) {
             StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < tickets.length; i++) {
+            for (int i = 0; i < resultados.length; i++) {
                 if (i > 0) sb.append("\n\n");
-                sb.append(formatoTicket(tickets[i], ticketCounter++));
+                sb.append(resultados[i].replace("TQ-00001", "TQ-" + String.format("%05d", ticketCounter++)));
             }
             JOptionPane.showMessageDialog(this, sb.toString());
             limpiarFormularioUnTicket();
         } else {
-            String motivo = "Verifique que la salida est\u00e9 PROGRAMADA y haya puestos disponibles.";
-            Salida s = empresa.getSalidaPorId(selectedSalidaIdUnTicket);
-            if (s != null && !Salida.PROGRAMADA.equals(s.getEstado())) {
-                motivo = "La salida ya no est\u00e1 disponible (estado actual: " + s.getEstado() + "). Solo se puede vender en salidas PROGRAMADAS.";
-            }
-            JOptionPane.showMessageDialog(this, motivo, "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Verifique que la salida este PROGRAMADA y haya puestos disponibles.", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -467,29 +451,29 @@ public class VentasPanel extends JPanel {
 
     private void actualizarResumenUnTicket() {
         if (selectedSalidaIdUnTicket == null) {
-            resumenRuta.setText("Ruta: —");
-            resumenSalida.setText("Salida: —");
-            resumenBus.setText("Bus: —");
-            resumenPuestos.setText("Puestos: —");
+            resumenRuta.setText("Ruta: --");
+            resumenSalida.setText("Salida: --");
+            resumenBus.setText("Bus: --");
+            resumenPuestos.setText("Puestos: --");
             resumenTotal.setText("Total: $0");
             return;
         }
-        Salida salida = empresa.getSalidaPorId(selectedSalidaIdUnTicket);
-        if (salida == null) return;
-        resumenRuta.setText("Ruta: " + salida.getMyRuta().getCodigo() + " — " + salida.getMyRuta().getOrigen() + " \u2192 " + salida.getMyRuta().getDestino());
-        resumenSalida.setText("Salida: " + salida.getIdSalida() + " (" + salida.getFecha().format(DateTimeFormatter.ofPattern("dd/MM HH:mm")) + ")");
-        resumenBus.setText("Bus: " + salida.getMyBus().getPlaca() + " (" + (salida.getMyBus() instanceof BusTipoEjecutivo ? "Ejecutivo" : "Normal") + ")");
+        String[] info = empresa.getInfoSalida(selectedSalidaIdUnTicket);
+        if (info == null || info[0].isEmpty()) return;
+        resumenRuta.setText("Ruta: " + info[0]);
+        resumenSalida.setText("Salida: " + info[1]);
+        resumenBus.setText("Bus: " + info[2]);
         if (selectedBlock != null) {
             StringBuilder sb = new StringBuilder("Puestos: ");
             for (int p : selectedBlock) sb.append(p).append(" ");
             resumenPuestos.setText(sb.toString());
             float total = 0f;
             for (int i = 0; i < selectedBlock.length; i++) {
-                float valor = salida.getMyRuta().getTarifa();
+                float valor = empresa.getTarifaSalida(selectedSalidaIdUnTicket);
                 PasajeroForm form = i < pasajeroForms.size() ? pasajeroForms.get(i) : null;
                 if (form != null && !form.cedulaField.getText().trim().isEmpty()) {
-                    Pasajero p = empresa.getPasajeroPorCedula(form.cedulaField.getText().trim());
-                    if (p != null && p.esPreferencial()) {
+                    String[] pasajeroInfo = empresa.getInfoPasajero(form.cedulaField.getText().trim());
+                    if (pasajeroInfo != null && "true".equals(pasajeroInfo[4])) {
                         valor = valor * 0.9f;
                     }
                 }
@@ -497,14 +481,10 @@ public class VentasPanel extends JPanel {
             }
             resumenTotal.setText("Total: $" + String.format("%,.0f", total));
         } else {
-            resumenPuestos.setText("Puestos: —");
+            resumenPuestos.setText("Puestos: --");
             resumenTotal.setText("Total: $0");
         }
     }
-
-    
-    
-    
 
     private JComboBox<String> idaCombo, vueltaCombo;
     private JPanel sillasGridIda, sillasGridVuelta;
@@ -673,10 +653,10 @@ public class VentasPanel extends JPanel {
         panel.add(titulo);
         panel.add(Box.createVerticalStrut(10));
 
-        resumenIyVRuta = new JLabel("Ruta: —");
-        resumenIyVIda = new JLabel("Ida: —");
-        resumenIyVVuelta = new JLabel("Vuelta: —");
-        resumenIyVPuestos = new JLabel("Puestos: —");
+        resumenIyVRuta = new JLabel("Ruta: --");
+        resumenIyVIda = new JLabel("Ida: --");
+        resumenIyVVuelta = new JLabel("Vuelta: --");
+        resumenIyVPuestos = new JLabel("Puestos: --");
         panel.add(resumenIyVRuta);
         panel.add(resumenIyVIda);
         panel.add(resumenIyVVuelta);
@@ -746,17 +726,15 @@ public class VentasPanel extends JPanel {
             validacionRutaLabel.setText(" ");
             return;
         }
-        Salida ida = empresa.getSalidaPorId(selectedSalidaIdIda);
-        Salida vuelta = empresa.getSalidaPorId(selectedSalidaIdVuelta);
-        if (ida != null && vuelta != null) {
-            
-            boolean esRetorno = ida.getMyRuta().getOrigen().equals(vuelta.getMyRuta().getDestino())
-                && ida.getMyRuta().getDestino().equals(vuelta.getMyRuta().getOrigen());
+        String[] infoIda = empresa.getInfoSalida(selectedSalidaIdIda);
+        String[] infoVuelta = empresa.getInfoSalida(selectedSalidaIdVuelta);
+        if (infoIda != null && infoVuelta != null && !infoIda[0].isEmpty() && !infoVuelta[0].isEmpty()) {
+            boolean esRetorno = infoIda[4].equals(infoVuelta[5]) && infoIda[5].equals(infoVuelta[4]);
             if (esRetorno) {
-                validacionRutaLabel.setText("Ruta de retorno validada (" + ida.getMyRuta().getOrigen() + " \u2194 " + ida.getMyRuta().getDestino() + ")");
+                validacionRutaLabel.setText("Ruta de retorno validada (" + infoIda[4] + " \u2194 " + infoIda[5] + ")");
                 validacionRutaLabel.setForeground(Colores.ESTADO_VERDE_TX);
             } else {
-                validacionRutaLabel.setText("Error: la vuelta debe ser la ruta inversa (" + ida.getMyRuta().getDestino() + " -> " + ida.getMyRuta().getOrigen() + ")");
+                validacionRutaLabel.setText("Error: la vuelta debe ser la ruta inversa (" + infoIda[5] + " -> " + infoIda[4] + ")");
                 validacionRutaLabel.setForeground(Colores.ESTADO_ROJO_TX);
             }
         }
@@ -765,9 +743,7 @@ public class VentasPanel extends JPanel {
     private void onCantidadIdaChanged() {
         int cantidad = (Integer) cantidadIdaSpinner.getValue();
         if (selectedSalidaIdIda == null) return;
-        Salida salida = empresa.getSalidaPorId(selectedSalidaIdIda);
-        if (salida == null) return;
-        int[] bloque = empresa.verificarPuestosConsecutivos(salida, cantidad);
+        int[] bloque = empresa.verificarPuestosConsecutivos(selectedSalidaIdIda, cantidad);
         if (bloque != null) {
             selectedBlockIda = bloque;
         } else {
@@ -782,9 +758,7 @@ public class VentasPanel extends JPanel {
     private void onCantidadVueltaChanged() {
         int cantidad = (Integer) cantidadVueltaSpinner.getValue();
         if (selectedSalidaIdVuelta == null) return;
-        Salida salida = empresa.getSalidaPorId(selectedSalidaIdVuelta);
-        if (salida == null) return;
-        int[] bloque = empresa.verificarPuestosConsecutivos(salida, cantidad);
+        int[] bloque = empresa.verificarPuestosConsecutivos(selectedSalidaIdVuelta, cantidad);
         if (bloque != null) {
             selectedBlockVuelta = bloque;
         } else {
@@ -819,42 +793,33 @@ public class VentasPanel extends JPanel {
     private void rebuildSeatGridIyV(JPanel grid, String salidaId, boolean esIda) {
         grid.removeAll();
         if (salidaId == null) return;
-        Salida salida = empresa.getSalidaPorId(salidaId);
-        if (salida == null) return;
-        Puesto[] puestos = salida.getMyPuestos();
+        int[] bloque = esIda ? selectedBlockIda : selectedBlockVuelta;
+        int[] estados = empresa.getEstadoPuestos(salidaId, bloque);
         int cols = 4;
-        int rows = (int) Math.ceil(puestos.length / (double) cols);
+        int rows = (int) Math.ceil(estados.length / (double) cols);
         grid.setLayout(new GridLayout(rows, cols, 4, 4));
 
-        int[] bloque = esIda ? selectedBlockIda : selectedBlockVuelta;
-        boolean[] enBloque = new boolean[puestos.length];
-        if (bloque != null) {
-            for (int p : bloque) {
-                if (p >= 1 && p <= puestos.length) enBloque[p - 1] = true;
-            }
-        }
-
-        for (int i = 0; i < puestos.length; i++) {
+        for (int i = 0; i < estados.length; i++) {
             final int numPuesto = i + 1;
             JButton btn = new JButton(String.valueOf(numPuesto));
             btn.setPreferredSize(new Dimension(40, 40));
             btn.setFont(new Font("SansSerif", Font.BOLD, 10));
             btn.setFocusPainted(false);
             btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-            if (puestos[i].estaLibre()) {
-                if (enBloque[i]) {
-                    btn.setBackground(Colores.AZUL_PRIMARIO);
-                    btn.setForeground(Color.WHITE);
-                } else {
-                    btn.setBackground(Colores.ESTADO_VERDE);
-                    btn.setForeground(Colores.ESTADO_VERDE_TX);
-                }
+            if (estados[i] == 2) {
+                btn.setBackground(Colores.FONDO_SUPERFICIE);
+                btn.setForeground(Colores.TEXTO_SECUNDARIO);
+                btn.setEnabled(false);
+            } else if (estados[i] == 1) {
+                btn.setBackground(Colores.AZUL_PRIMARIO);
+                btn.setForeground(Color.WHITE);
                 btn.addActionListener(e -> {
                     int cantidad = esIda ? (Integer) cantidadIdaSpinner.getValue() : (Integer) cantidadVueltaSpinner.getValue();
                     boolean puede = true;
+                    int[] estadosActuales = empresa.getEstadoPuestos(salidaId, bloque);
                     for (int j = 0; j < cantidad; j++) {
                         int idx = numPuesto - 1 + j;
-                        if (idx >= puestos.length || !puestos[idx].estaLibre()) {
+                        if (idx >= estadosActuales.length || estadosActuales[idx] == 2) {
                             puede = false; break;
                         }
                     }
@@ -868,9 +833,27 @@ public class VentasPanel extends JPanel {
                     }
                 });
             } else {
-                btn.setBackground(Colores.FONDO_SUPERFICIE);
-                btn.setForeground(Colores.TEXTO_SECUNDARIO);
-                btn.setEnabled(false);
+                btn.setBackground(Colores.ESTADO_VERDE);
+                btn.setForeground(Colores.ESTADO_VERDE_TX);
+                btn.addActionListener(e -> {
+                    int cantidad = esIda ? (Integer) cantidadIdaSpinner.getValue() : (Integer) cantidadVueltaSpinner.getValue();
+                    boolean puede = true;
+                    int[] estadosActuales = empresa.getEstadoPuestos(salidaId, bloque);
+                    for (int j = 0; j < cantidad; j++) {
+                        int idx = numPuesto - 1 + j;
+                        if (idx >= estadosActuales.length || estadosActuales[idx] == 2) {
+                            puede = false; break;
+                        }
+                    }
+                    if (puede) {
+                        int[] nuevoBloque = new int[cantidad];
+                        for (int j = 0; j < cantidad; j++) nuevoBloque[j] = numPuesto + j;
+                        if (esIda) selectedBlockIda = nuevoBloque; else selectedBlockVuelta = nuevoBloque;
+                        rebuildSeatGridIyV(grid, salidaId, esIda);
+                        revisarFormulariosIyV();
+                        actualizarResumenIyV();
+                    }
+                });
             }
             grid.add(btn);
         }
@@ -883,62 +866,34 @@ public class VentasPanel extends JPanel {
             JOptionPane.showMessageDialog(this, "Seleccione salidas de ida y vuelta y bloques de puestos");
             return;
         }
-        Salida salidaIda = empresa.getSalidaPorId(selectedSalidaIdIda);
-        Salida salidaVuelta = empresa.getSalidaPorId(selectedSalidaIdVuelta);
-        if (salidaIda == null || salidaVuelta == null) return;
 
-        
-        boolean esRetorno = salidaIda.getMyRuta().getOrigen().equals(salidaVuelta.getMyRuta().getDestino())
-            && salidaIda.getMyRuta().getDestino().equals(salidaVuelta.getMyRuta().getOrigen());
-        if (!esRetorno) {
-            JOptionPane.showMessageDialog(this, "La vuelta debe ser la ruta inversa (" + salidaIda.getMyRuta().getDestino() + " -> " + salidaIda.getMyRuta().getOrigen() + ")");
-            return;
-        }
-
-        
         int cantIda = selectedBlockIda.length;
-        Pasajero[] pasajeros = new Pasajero[cantIda];
+        String[] cedulas = new String[cantIda];
+        String[] nombres = new String[cantIda];
+        String[] correos = new String[cantIda];
+        String[] telefonos = new String[cantIda];
         for (int i = 0; i < cantIda; i++) {
             if (i >= pasajeroIyVForms.size()) { JOptionPane.showMessageDialog(this, "Datos de pasajeros incompletos"); return; }
             PasajeroForm form = pasajeroIyVForms.get(i);
-            String cedula = form.cedulaField.getText().trim();
-            String nombre = form.nombreField.getText().trim();
-            String correo = form.correoField.getText().trim();
-            String telefono = form.telefonoField.getText().trim();
-            if (cedula.isEmpty() || nombre.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Complete c\u00e9dula y nombre para el pasajero del puesto " + form.puesto);
+            cedulas[i] = form.cedulaField.getText().trim();
+            nombres[i] = form.nombreField.getText().trim();
+            correos[i] = form.correoField.getText().trim();
+            telefonos[i] = form.telefonoField.getText().trim();
+            if (cedulas[i].isEmpty() || nombres[i].isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Complete cedula y nombre para el pasajero del puesto " + form.puesto);
                 return;
             }
-            pasajeros[i] = empresa.buscarOCrearPasajero(cedula, nombre, "", correo, telefono);
         }
 
-        
-        int cantVuelta = selectedBlockVuelta.length;
-        boolean ok = empresa.ventaIdaYVuelta(selectedSalidaIdIda, selectedBlockIda, pasajeros,
-                selectedSalidaIdVuelta, selectedBlockVuelta, pasajeros);
-        if (ok) {
-            Salida sIda = empresa.getSalidaPorId(selectedSalidaIdIda);
-            Salida sVuelta = empresa.getSalidaPorId(selectedSalidaIdVuelta);
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < cantIda; i++) {
-                if (sb.length() > 0) sb.append("\n\n");
-                sb.append(formatoTicketIdaVuelta(sIda, selectedBlockIda[i], pasajeros[i], ticketCounter++, true));
-            }
-            for (int i = 0; i < cantVuelta; i++) {
-                sb.append("\n\n");
-                sb.append(formatoTicketIdaVuelta(sVuelta, selectedBlockVuelta[i], pasajeros[i], ticketCounter++, false));
-            }
-            JOptionPane.showMessageDialog(this, sb.toString());
+        String resultado = empresa.ventaIdaYVueltaFormateada(
+            selectedSalidaIdIda, selectedBlockIda, cedulas, nombres, correos, telefonos,
+            selectedSalidaIdVuelta, selectedBlockVuelta);
+        if (resultado != null && !resultado.startsWith("La salida") && !resultado.startsWith("No hay")
+            && !resultado.startsWith("Algun puesto") && !resultado.startsWith("Error")) {
+            JOptionPane.showMessageDialog(this, resultado);
             limpiarFormularioIyV();
         } else {
-            
-            String motivo = "Verifique que:\n"
-                + "- Ambas salidas est\u00e9n PROGRAMADAS\n"
-                + "- Haya puestos consecutivos disponibles\n"
-                + "- La ruta de vuelta sea la inversa de ida";
-            if (!Salida.PROGRAMADA.equals(salidaIda.getEstado())) motivo += "\n- La salida de ida NO est\u00e1 PROGRAMADA (est\u00e1: " + salidaIda.getEstado() + ")";
-            if (!Salida.PROGRAMADA.equals(salidaVuelta.getEstado())) motivo += "\n- La salida de vuelta NO est\u00e1 PROGRAMADA (est\u00e1: " + salidaVuelta.getEstado() + ")";
-            JOptionPane.showMessageDialog(this, motivo, "Error al generar tiquetes", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, resultado != null ? resultado : "Error al generar tiquetes de ida y vuelta.", "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -955,7 +910,6 @@ public class VentasPanel extends JPanel {
         cantidadVueltaSpinner.setValue(1);
         if (idaCombo.getItemCount() > 0) idaCombo.setSelectedIndex(0);
         if (vueltaCombo.getItemCount() > 0) vueltaCombo.setSelectedIndex(0);
-        
         onIdaChanged();
         onVueltaChanged();
         validacionRutaLabel.setText(" ");
@@ -963,21 +917,21 @@ public class VentasPanel extends JPanel {
     }
 
     private void actualizarResumenIyV() {
-        Salida salidaIda = selectedSalidaIdIda != null ? empresa.getSalidaPorId(selectedSalidaIdIda) : null;
-        Salida salidaVuelta = selectedSalidaIdVuelta != null ? empresa.getSalidaPorId(selectedSalidaIdVuelta) : null;
-        if (salidaIda != null) {
-            resumenIyVRuta.setText("Ruta: " + salidaIda.getMyRuta().getCodigo() + " — " + salidaIda.getMyRuta().getOrigen() + " \u2192 " + salidaIda.getMyRuta().getDestino());
-            resumenIyVIda.setText("Ida: " + salidaIda.getIdSalida() + " (" + salidaIda.getFecha().format(DateTimeFormatter.ofPattern("dd/MM HH:mm")) + ")");
+        String[] infoIda = selectedSalidaIdIda != null ? empresa.getInfoSalida(selectedSalidaIdIda) : null;
+        String[] infoVuelta = selectedSalidaIdVuelta != null ? empresa.getInfoSalida(selectedSalidaIdVuelta) : null;
+        if (infoIda != null && !infoIda[0].isEmpty()) {
+            resumenIyVRuta.setText("Ruta: " + infoIda[0]);
+            resumenIyVIda.setText("Ida: " + infoIda[1]);
         } else {
-            resumenIyVRuta.setText("Ruta: —");
-            resumenIyVIda.setText("Ida: —");
+            resumenIyVRuta.setText("Ruta: --");
+            resumenIyVIda.setText("Ida: --");
         }
-        if (salidaVuelta != null) {
-            resumenIyVVuelta.setText("Vuelta: " + salidaVuelta.getIdSalida() + " (" + salidaVuelta.getFecha().format(DateTimeFormatter.ofPattern("dd/MM HH:mm")) + ")");
+        if (infoVuelta != null && !infoVuelta[0].isEmpty()) {
+            resumenIyVVuelta.setText("Vuelta: " + infoVuelta[1]);
         } else {
-            resumenIyVVuelta.setText("Vuelta: —");
+            resumenIyVVuelta.setText("Vuelta: --");
         }
-        if (selectedBlockIda != null && selectedBlockVuelta != null && salidaIda != null && salidaVuelta != null) {
+        if (selectedBlockIda != null && selectedBlockVuelta != null && infoIda != null && infoVuelta != null) {
             StringBuilder sb = new StringBuilder("Puestos ida: ");
             for (int p : selectedBlockIda) sb.append(p).append(" ");
             sb.append("| vuelta: ");
@@ -985,58 +939,16 @@ public class VentasPanel extends JPanel {
             resumenIyVPuestos.setText(sb.toString());
             float total = 0f;
             for (int i = 0; i < selectedBlockIda.length; i++) {
-                float base = salidaIda.getMyRuta().getTarifa();
+                float base = empresa.getTarifaSalida(selectedSalidaIdIda);
                 float totalAntes = base * 2f;
                 total += totalAntes * 0.9f;
             }
             resumenIyVTotal.setText("Total: $" + String.format("%,.0f", total));
         } else {
-            resumenIyVPuestos.setText("Puestos: —");
+            resumenIyVPuestos.setText("Puestos: --");
             resumenIyVTotal.setText("Total: $0");
         }
     }
-
-    
-    
-    
-
-    private String formatoTicket(PasajeTicket t, int ticketNum) {
-        Salida s = t.getMySalida();
-        Bus b = s.getMyBus();
-        String tipoBus = b instanceof BusTipoEjecutivo ? "EJECUTIVO" : "NORMAL";
-        return "VENTA EXITOSA\n" +
-            "Tiquete: TQ-" + String.format("%05d", ticketNum) + "\n" +
-            "Pasajero: " + t.getMyPasajero().getCedula() + " - " + t.getMyPasajero().getNombre() + "\n" +
-            "Salida: " + s.getIdSalida() + " (" + s.getMyRuta().getOrigen() + " -> " + s.getMyRuta().getDestino() + ") " +
-                s.getFecha().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + "\n" +
-            "Bus: " + b.getPlaca() + " (" + tipoBus + ")  Capacidad: " + b.getCapacidad() + "\n" +
-            "Silla: " + t.getPuesto() + "\n" +
-            "Valor pagado: $" + String.format("%,.0f", t.getValorPagar()) + "\n" +
-            "Estado tiquete: VIGENTE";
-    }
-
-    private String formatoTicketIdaVuelta(Salida s, int puesto, Pasajero p, int ticketNum, boolean esIda) {
-        Bus b = s.getMyBus();
-        String tipoBus = b instanceof BusTipoEjecutivo ? "EJECUTIVO" : "NORMAL";
-        String tipoTicket = esIda ? "IDA" : "VUELTA";
-        float valor = s.getMyRuta().getTarifa();
-        if (p.esPreferencial()) valor = valor * 0.9f;
-        valor = valor * 0.9f; 
-
-        return "VENTA EXITOSA — " + tipoTicket + "\n" +
-            "Tiquete: TQ-" + String.format("%05d", ticketNum) + "\n" +
-            "Pasajero: " + p.getCedula() + " - " + p.getNombre() + "\n" +
-            "Salida: " + s.getIdSalida() + " (" + s.getMyRuta().getOrigen() + " -> " + s.getMyRuta().getDestino() + ") " +
-                s.getFecha().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + "\n" +
-            "Bus: " + b.getPlaca() + " (" + tipoBus + ")  Capacidad: " + b.getCapacidad() + "\n" +
-            "Silla: " + puesto + "\n" +
-            "Valor pagado: $" + String.format("%,.0f", valor) + "\n" +
-            "Estado tiquete: VIGENTE";
-    }
-
-    
-    
-    
 
     private JPanel crearLeyenda(Color color, String texto) {
         JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
@@ -1065,17 +977,13 @@ public class VentasPanel extends JPanel {
     private void cargarDestinosEnCombo(JComboBox<String> combo) {
         String selected = (String) combo.getSelectedItem();
         combo.removeAllItems();
-        for (Ruta r : empresa.listarRutas()) {
-            if (!"C\u00facuta".equalsIgnoreCase(r.getDestino())) {
-                combo.addItem(r.getDestino());
+        for (String[] item : empresa.getDestinosDisponibles()) {
+            if (!"Cucuta".equalsIgnoreCase(item[0])) {
+                combo.addItem(item[0]);
             }
         }
-        if (selected != null && !"C\u00facuta".equalsIgnoreCase(selected)) combo.setSelectedItem(selected);
+        if (selected != null && !"Cucuta".equalsIgnoreCase(selected)) combo.setSelectedItem(selected);
     }
-
-    
-    
-    
 
     private static class PasajeroForm extends JPanel {
         final int puesto;
@@ -1098,7 +1006,7 @@ public class VentasPanel extends JPanel {
             gbc.insets = new Insets(2, 2, 2, 2);
 
             gbc.gridx = 0; gbc.gridy = 0;
-            add(new JLabel("Puesto " + puesto + " | C\u00e9dula:"), gbc);
+            add(new JLabel("Puesto " + puesto + " | Cedula:"), gbc);
             gbc.gridx = 1;
             cedulaField = new JTextField(10);
             add(cedulaField, gbc);
@@ -1116,7 +1024,7 @@ public class VentasPanel extends JPanel {
             add(correoField, gbc);
 
             gbc.gridx = 0; gbc.gridy = 3;
-            add(new JLabel("Tel\u00e9fono:"), gbc);
+            add(new JLabel("Telefono:"), gbc);
             gbc.gridx = 1;
             telefonoField = new JTextField(10);
             add(telefonoField, gbc);
@@ -1131,14 +1039,14 @@ public class VentasPanel extends JPanel {
                 public void focusLost(FocusEvent e) {
                     String cedula = cedulaField.getText().trim();
                     if (!cedula.isEmpty()) {
-                        Pasajero p = empresa.getPasajeroPorCedula(cedula);
-                        if (p != null) {
-                            nombreField.setText(p.getNombre());
-                            correoField.setText(p.getCorreo());
-                            telefonoField.setText(p.getTelefono());
+                        String[] info = empresa.getInfoPasajero(cedula);
+                        if (info != null) {
+                            nombreField.setText(info[1]);
+                            correoField.setText(info[2]);
+                            telefonoField.setText(info[3]);
                             nombreField.setEnabled(false);
-                            if (p.esPreferencial()) {
-                                tipoLabel.setText("CLIENTE PREFERENCIAL — 10% descuento");
+                            if ("true".equals(info[4])) {
+                                tipoLabel.setText("CLIENTE PREFERENCIAL -- 10% descuento");
                                 tipoLabel.setForeground(Colores.ESTADO_VERDE_TX);
                             } else {
                                 tipoLabel.setText("Cliente frecuente");

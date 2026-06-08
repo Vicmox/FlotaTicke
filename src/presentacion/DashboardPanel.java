@@ -6,7 +6,6 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
@@ -15,12 +14,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.SwingConstants;
-import negocio.Bus;
-import negocio.CajaVenta;
 import negocio.EmpresaTransporte;
-import negocio.PasajeTicket;
-import negocio.Ruta;
-import negocio.Salida;
 
 public class DashboardPanel extends JPanel {
 
@@ -57,7 +51,7 @@ public class DashboardPanel extends JPanel {
         JPanel centerPanel = new JPanel(new GridLayout(1, 2, 10, 0));
         centerPanel.setOpaque(false);
 
-        ocupacionModel = new DefaultTableModel(new String[]{"Ruta", "Vendidos", "Capacidad", "Ocupaci\u00f3n %"}, 0) {
+        ocupacionModel = new DefaultTableModel(new String[]{"Ruta", "Vendidos", "Capacidad", "Ocupacion %"}, 0) {
             @Override public boolean isCellEditable(int row, int col) { return false; }
         };
         JTable ocupacionTable = new JTable(ocupacionModel);
@@ -72,7 +66,7 @@ public class DashboardPanel extends JPanel {
             ocupacionTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
         }
 
-        JPanel ocupacionPanel = crearPanelTabla("Ocupaci\u00f3n por ruta", new JScrollPane(ocupacionTable));
+        JPanel ocupacionPanel = crearPanelTabla("Ocupacion por ruta", new JScrollPane(ocupacionTable));
 
         salidasModel = new DefaultTableModel(new String[]{"Hora", "Ruta", "Bus", "Estado"}, 0) {
             @Override public boolean isCellEditable(int row, int col) { return false; }
@@ -87,7 +81,7 @@ public class DashboardPanel extends JPanel {
             salidasTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
         }
 
-        JPanel salidasPanel = crearPanelTabla("Pr\u00f3ximas salidas", new JScrollPane(salidasTable));
+        JPanel salidasPanel = crearPanelTabla("Proximas salidas", new JScrollPane(salidasTable));
 
         centerPanel.add(ocupacionPanel);
         centerPanel.add(salidasPanel);
@@ -174,59 +168,19 @@ public class DashboardPanel extends JPanel {
     }
 
     public void actualizarDatos() {
-        CajaVenta caja = empresa.getCajaVenta();
-        int totalTiquetes = 0;
-        for (PasajeTicket t : empresa.getMyTickets()) {
-            if (PasajeTicket.VIGENTE.equals(t.getEstado())) totalTiquetes++;
-        }
-        vendidosLabel.setText(String.valueOf(totalTiquetes));
-        ingresoLabel.setText(String.format("$%,.0f", caja.getIngresoNeto()));
-        reembolsosLabel.setText(String.format("$%,.0f", caja.getTotalReembolsado()));
-
-        int activos = 0;
-        for (Bus b : empresa.listarBuses()) {
-            if (Bus.DISPONIBLE.equals(b.getEstado())) activos++;
-        }
-        busesLabel.setText(String.valueOf(activos));
+        vendidosLabel.setText(String.valueOf(empresa.contarTicketsVigentes()));
+        ingresoLabel.setText(String.format("$%,.0f", empresa.getIngresoNeto()));
+        reembolsosLabel.setText(String.format("$%,.0f", empresa.getTotalReembolsado()));
+        busesLabel.setText(String.valueOf(empresa.contarBusesDisponibles()));
 
         ocupacionModel.setRowCount(0);
-        Map<String, int[]> rutaStats = new LinkedHashMap<>();
-        for (Ruta r : empresa.listarRutas()) {
-            rutaStats.put(r.getCodigo(), new int[]{0, 0});
-        }
-        for (PasajeTicket t : empresa.getMyTickets()) {
-            if (PasajeTicket.VIGENTE.equals(t.getEstado())) {
-                String cod = t.getMySalida().getMyRuta().getCodigo();
-                int[] stats = rutaStats.get(cod);
-                if (stats != null) stats[0]++;
-            }
-        }
-        for (Salida s : empresa.listarSalidas()) {
-            String cod = s.getMyRuta().getCodigo();
-            int[] stats = rutaStats.get(cod);
-            if (stats != null) stats[1] += s.getMyBus().getCapacidad();
-        }
-        for (Map.Entry<String, int[]> e : rutaStats.entrySet()) {
-            int vend = e.getValue()[0];
-            int cap = e.getValue()[1];
-            String pct = cap > 0 ? String.format("%.0f%%", (vend * 100.0 / cap)) : "0%";
-            ocupacionModel.addRow(new Object[]{e.getKey(), vend, cap, pct});
+        for (Object[] row : empresa.getOcupacionPorRuta()) {
+            ocupacionModel.addRow(row);
         }
 
         salidasModel.setRowCount(0);
-        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm");
-        List<Salida> salidas = new ArrayList<>();
-        for (Salida s : empresa.listarSalidas()) {
-            if (Salida.PROGRAMADA.equals(s.getEstado())) salidas.add(s);
-        }
-        salidas.sort((a, b) -> a.getFecha().compareTo(b.getFecha()));
-        for (Salida s : salidas) {
-            salidasModel.addRow(new Object[]{
-                s.getFecha().format(fmt),
-                s.getMyRuta().getCodigo(),
-                s.getMyBus().getPlaca(),
-                s.getEstado()
-            });
+        for (Object[] row : empresa.getProximasSalidasProgramadas()) {
+            salidasModel.addRow(row);
         }
     }
 }
